@@ -9,14 +9,22 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@hookform/resolvers": "^3.3.1",
     "@types/node": "20.5.8",
     "@types/react": "18.2.21",
     "@types/react-dom": "18.2.7",
+    "bufferutil": "^4.0.7",
     "eslint": "8.48.0",
     "eslint-config-next": "13.4.19",
     "next": "13.4.19",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "typescript": "5.2.2"
+    "react-hook-form": "^7.45.4",
+    "socket.io": "^4.7.2",
+    "socket.io-client": "^4.7.2",
+    "typescript": "5.2.2",
+    "utf-8-validate": "^5.0.10",
+    "ws": "^8.13.0",
+    "yup": "^1.2.0"
   }
 }
