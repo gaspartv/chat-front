@@ -537,13 +537,38 @@ export default function Home() {
                 gap: '4px',
               }}
             >
-              {myMessages?.map((message, i) => {
-                if (message.sendTo === myUser?.id) {
+              {myMessages
+                ?.filter((message: IMessage, index: any, self: any) => {
+                  return self.indexOf(message) === index
+                })
+                .map((message, i) => {
+                  if (message.sendTo === myUser?.id) {
+                    return (
+                      <p
+                        key={i}
+                        style={{
+                          textAlign: 'end',
+                          backgroundColor: '#bff1ff',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          padding: '12px',
+                          borderRadius: '6px',
+                          gap: '3px',
+                        }}
+                      >
+                        <span style={{ fontWeight: 'bold' }}>
+                          {myUser.name}
+                        </span>
+                        <span>{message.text}</span>
+                      </p>
+                    )
+                  }
                   return (
                     <p
                       key={i}
                       style={{
-                        textAlign: 'end',
+                        textAlign: 'start',
                         backgroundColor: '#bff1ff',
                         display: 'flex',
                         flexDirection: 'column',
@@ -553,32 +578,13 @@ export default function Home() {
                         gap: '3px',
                       }}
                     >
-                      <span style={{ fontWeight: 'bold' }}>{myUser.name}</span>
+                      <span style={{ fontWeight: 'bold' }}>
+                        {message.sendName}
+                      </span>
                       <span>{message.text}</span>
                     </p>
                   )
-                }
-                return (
-                  <p
-                    key={i}
-                    style={{
-                      textAlign: 'start',
-                      backgroundColor: '#bff1ff',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      padding: '12px',
-                      borderRadius: '6px',
-                      gap: '3px',
-                    }}
-                  >
-                    <span style={{ fontWeight: 'bold' }}>
-                      {message.sendName}
-                    </span>
-                    <span>{message.text}</span>
-                  </p>
-                )
-              })}
+                })}
             </span>
           </div>
           <div>
