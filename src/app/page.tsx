@@ -5,198 +5,247 @@ import { io } from 'socket.io-client'
 
 const socket = io(`http://localhost:8080`)
 
-interface IChat {
-  name: string
-  message: string
-  isClient: boolean
+interface ITreatment {
+  id: string
+  isOpen: Boolean
+  client: IUser
+  clientId: string
+  attendant: string | null
+  Message: IMessage[]
+  Department: IDepartment
+  departmentId: string
 }
 
-interface IConversation {
+interface IUser {
   id: string
-  isOpen: boolean
-  departmentId: string
-  Message: []
-  Users: []
+  name: string
+  login: string
+  passwordHash: string
+  isAttendant: boolean
+  Department: IDepartment[]
+  Treatment: ITreatment[]
+}
+
+interface IMessage {
+  id?: string
+  text: string
+  sendName: string
+  sendTo: string
+  receivedName?: string
+  receivedTo?: string
+  Treatment?: ITreatment
+  treatmentId: string
+}
+
+interface IDepartment {
+  id: string
+  name: string
+  User: IUser[]
+  Company: ICompany
+  companyId: string
+  Treatment: ITreatment[]
+}
+
+interface ICompany {
+  id: string
+  name: string
+  Department: IDepartment[]
 }
 
 export default function Home() {
-  const [countAttTreatments, setCountAttTreatments] = useState(0)
+  const [myUser, setMyUser] = useState<IUser | null>(null)
+  const [myOpenTreatments, setMyOpenTreatments] = useState<ITreatment[]>([])
+  const [myDepartments, setMyDepartments] = useState<IDepartment[]>([])
+  const [myMessages, setMyMessages] = useState<IMessage[]>([])
+  const [myTreatmentsByDepartment, setMyTreatmentsByDepartment] = useState<
+    ITreatment[]
+  >([])
 
-  const [department, setDepartment] = useState('Global')
-
-  const [openConversations, setOpenConversations] = useState<IConversation[]>(
-    []
+  const [currentDepartment, setCurrentDepartment] =
+    useState<IDepartment | null>(null)
+  const [currentTreatment, setCurrentTreatment] = useState<ITreatment | null>(
+    null
   )
-  const [conversationsOnHold, setConversationsOnHold] = useState<
-    IConversation[]
-  >([])
 
-  const [chat, setChat] = useState<
-    {
-      name: string
-      message: string
-      isClient: boolean
-    }[]
-  >([])
-  const [message, setMessage] = useState<string>('')
+  const [registerName, setRegisterName] = useState<string | null>(null)
+  const [registerLogin, setRegisterLogin] = useState<string | null>(null)
+  const [registerPassword, setRegisterPassword] = useState<string | null>(null)
 
-  const [loginState, setLoginState] = useState('')
-  const [passwordState, setPasswordState] = useState('')
+  const [authLogin, setAuthLogin] = useState<string | null>(null)
+  const [authPassword, setAuthPassword] = useState<string | null>(null)
 
-  const [userName, setUserName] = useState('')
-  const [userLogin, setUserLogin] = useState('')
-  const [userPassword, setUserPassword] = useState('')
+  const [text, setText] = useState<string>('')
 
-  const [user, setUser] = useState<{
-    id: string
-    name: string
-    login: string
-    Department: [
-      {
-        id: string
-        name: string
-        companyId: string
-      }
-    ]
-    Treatment: []
-  }>()
+  const [updateDepartmentQueue, setUpdateDepartmentQueue] =
+    useState<boolean>(true)
 
-  async function handleLogin() {
-    try {
-      const dataToSend = {
-        login: loginState,
-        password: passwordState,
-      }
-
-      const data = await fetch('http://localhost:8080/chat/auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dataToSend),
-      }).then((el) => el.json())
-
-      setUser(data)
-    } catch (error) {
-      alert(error)
-    }
-  }
-
-  async function createUser() {
-    try {
-      const dataToSend = {
-        name: userName,
-        login: userLogin,
-        password: userPassword,
-      }
-
-      const data = await fetch('http://localhost:8080/chat/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dataToSend),
-      }).then((el) => el.json())
-
-      setUser(data)
-    } catch (error) {
-      alert(error)
-    }
-  }
-
+  /// SOCKET IO PARA TRANSFERÊNCIA DE DADOS DO DEPARTAMENTO
   useEffect(() => {
-    async function findAllTreatments() {
-      try {
-        const res1 = await fetch('http://localhost:8080/chat/treatments').then(
-          (el) => el.json()
-        )
-        const res2 = await fetch(
-          'http://localhost:8080/chat/treatments/my'
+    if (currentDepartment) {
+      socket.off(currentDepartment.id)
+
+      socket.on(currentDepartment.id, (message: any) => {
+        if (message) setUpdateDepartmentQueue(true)
+      })
+
+      return () => {
+        socket.off(currentDepartment.id)
+      }
+    }
+  }, [currentDepartment])
+
+  /// SOCKET IO PARA TRANSFERÊNCIA DE DADOS DO ATENDIMENTO
+  useEffect(() => {
+    async function find_Treatment_By_Id() {
+      if (currentTreatment) {
+        const res: ITreatment = await fetch(
+          `http://localhost:8080/chat/treatments/${currentTreatment.id}`
         ).then((el) => el.json())
 
-        setConversationsOnHold(res1)
-        setOpenConversations(res2)
-      } catch (error) {
-        console.error(error)
+        setMyMessages(res.Message)
+
+        socket.on(res.id, (message: IMessage) => {
+          setMyMessages((prevMessages) => [...prevMessages, message])
+        })
+
+        return () => {
+          socket.off(currentTreatment.id)
+        }
       }
     }
-    setTimeout(() => {
-      findAllTreatments()
-      setCountAttTreatments(countAttTreatments + 1)
-    }, 5000)
-  }, [countAttTreatments])
 
+    find_Treatment_By_Id()
+  }, [currentTreatment])
+
+  /// USE EFFECT PARA ATUALIZAR AS FILAS DE CONVERSA
   useEffect(() => {
-    socket.off(department)
+    async function find_My_Treatments_In_Department() {
+      if (updateDepartmentQueue && currentDepartment && myUser) {
+        const myTreatments: ITreatment[] = await fetch(
+          `http://localhost:8080/chat/treatments/department/${currentDepartment.id}/not/${myUser.id}`
+        ).then(async (el) => el.json())
 
-    socket.on(department, (message) => {
-      setChat((prevMessages) => [...prevMessages, message])
-    })
+        const myOpenTreatments: ITreatment[] = await fetch(
+          `http://localhost:8080/chat/treatments/department/${currentDepartment.id}/attendant/${myUser.id}`
+        ).then((el) => el.json())
 
-    return () => {
-      socket.off(department)
+        setMyOpenTreatments(myOpenTreatments)
+        setMyTreatmentsByDepartment(myTreatments)
+        setUpdateDepartmentQueue(false)
+      }
     }
-  }, [department])
 
-  async function requestService() {
-    const dataToSend = {
-      clientId: user?.id,
-    }
+    find_My_Treatments_In_Department()
+  }, [updateDepartmentQueue, currentDepartment, myUser])
 
-    try {
-      const res = await fetch('http://localhost:8080/chat/toMeet', {
+  async function createUser(): Promise<void> {
+    if (
+      typeof registerLogin === 'string' &&
+      typeof registerName === 'string' &&
+      typeof registerPassword === 'string'
+    ) {
+      const data: IUser = await fetch(`http://localhost:8080/chat/users`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dataToSend),
-      }).then((el) => el.json())
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: registerName,
+          login: registerLogin,
+          password: registerPassword,
+        }),
+      }).then((res) => res.json())
 
-      setDepartment(res.id)
-    } catch (error) {
-      alert(error)
+      setMyUser(data)
+      setRegisterLogin(null)
+      setRegisterName(null)
+      setRegisterPassword(null)
     }
   }
 
-  async function requestReceivedService(treatmentId: string) {
-    const dataToSend = {
-      treatmentId,
-      attendantId: user?.id,
-    }
-
-    try {
-      const res = await fetch('http://localhost:8080/chat/toMeetReceived', {
+  async function login(): Promise<void> {
+    if (typeof authLogin === 'string' && typeof authPassword === 'string') {
+      const data = await fetch(`http://localhost:8080/chat/auth`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dataToSend),
-      }).then((el) => el.json())
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login: authLogin, password: authPassword }),
+      }).then((res) => res.json())
 
-      setDepartment(res.id)
-    } catch (error) {
-      alert(error)
+      setMyUser(data)
+      setMyDepartments(data.Department)
+      setAuthLogin(null)
+      setAuthPassword(null)
     }
   }
 
-  async function closedTreatment(treatmentId: string) {
-    const dataToSend = {
-      treatmentId,
-    }
+  async function sendMessage(): Promise<void> {
+    if (myUser && currentTreatment) {
+      const data = await fetch(`http://localhost:8080/chat/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          sendName: myUser.name,
+          sendTo: myUser.id,
+          treatmentId: currentTreatment.id,
+        }),
+      }).then((res) => res.json())
 
-    try {
-      const res = await fetch('http://localhost:8080/chat/closed', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dataToSend),
-      }).then((el) => el.json())
-
-      setDepartment('Global')
-    } catch (error) {
-      alert(error)
+      socket.emit('msgToServer', data)
     }
+  }
+
+  async function openTreatment(): Promise<void> {
+    if (myUser && currentDepartment) {
+      const data: ITreatment = await fetch(
+        `http://localhost:8080/chat/toMeet`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientId: myUser.id,
+            departmentId: currentDepartment.id,
+          }),
+        }
+      ).then((res) => res.json())
+
+      setCurrentTreatment(data)
+      setMyOpenTreatments([...myOpenTreatments, data])
+      socket.emit('msgToServer', { departmentId: currentDepartment.id })
+    }
+  }
+
+  async function receivedTreatment(treatmentId: string): Promise<void> {
+    if (myUser) {
+      const data: ITreatment = await fetch(
+        `http://localhost:8080/chat/toMeetReceived`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ treatmentId, attendantId: myUser.id }),
+        }
+      ).then((res) => res.json())
+
+      setCurrentTreatment(data)
+      setMyMessages(data.Message)
+      setMyOpenTreatments([...myOpenTreatments, data])
+      setUpdateDepartmentQueue(true)
+      socket.emit('msgToServer', { departmentId: data.departmentId })
+    }
+  }
+
+  async function closedTreatment(treatmentId: string): Promise<void> {
+    const data: ITreatment = await fetch(`http://localhost:8080/chat/closed`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ treatmentId }),
+    }).then((res) => res.json())
+
+    const removeTreatment = myOpenTreatments.filter(
+      (treatment) => treatment.id !== treatmentId
+    )
+
+    setUpdateDepartmentQueue(true)
+    setMyOpenTreatments(removeTreatment)
+    socket.emit('msgToServer', { departmentId: data.departmentId })
   }
 
   return (
@@ -209,15 +258,13 @@ export default function Home() {
         }}
       >
         <div>
-          <strong>User:</strong> {user?.name}
+          <strong>User:</strong> {myUser?.name}
           <br />
-          <strong>UserId:</strong> {user?.id}
+          <strong>UserId:</strong> {myUser?.id}
           <br />
-          <strong>CompanyId:</strong> {user?.Department[0]?.companyId}
+          <strong>DepartmentId:</strong> {currentDepartment?.id}
           <br />
-          <strong>DepartmentId:</strong> {user?.Department[0]?.id}
-          <br />
-          <strong>Department:</strong> {user?.Department[0]?.name}
+          <strong>Department:</strong> {currentDepartment?.name}
         </div>
         <div
           style={{
@@ -249,17 +296,20 @@ export default function Home() {
               <input
                 type="text"
                 placeholder="name"
-                onChange={(el) => setUserName(el.target.value)}
+                value={registerName || ''}
+                onChange={(el) => setRegisterName(el.target.value)}
               />
               <input
                 type="text"
                 placeholder="login"
-                onChange={(el) => setUserLogin(el.target.value)}
+                value={registerLogin || ''}
+                onChange={(el) => setRegisterLogin(el.target.value)}
               />
               <input
                 type="text"
                 placeholder="password"
-                onChange={(el) => setUserPassword(el.target.value)}
+                value={registerPassword || ''}
+                onChange={(el) => setRegisterPassword(el.target.value)}
               />
               <button
                 onClick={(e) => {
@@ -294,17 +344,19 @@ export default function Home() {
               <input
                 type="text"
                 placeholder="login"
-                onChange={(el) => setLoginState(el.target.value)}
+                value={authLogin || ''}
+                onChange={(el) => setAuthLogin(el.target.value)}
               />
               <input
                 type="text"
                 placeholder="password"
-                onChange={(el) => setPasswordState(el.target.value)}
+                value={authPassword || ''}
+                onChange={(el) => setAuthPassword(el.target.value)}
               />
               <button
                 onClick={(el) => {
                   el.preventDefault()
-                  handleLogin()
+                  login()
                 }}
               >
                 Login
@@ -325,11 +377,25 @@ export default function Home() {
         <button
           onClick={(el) => {
             el.preventDefault()
-            requestService()
+            openTreatment()
           }}
         >
           Solicitar atendimento
         </button>
+
+        {myDepartments?.map((el, i) => (
+          <button
+            key={i}
+            onClick={(e) => {
+              e.preventDefault()
+              setUpdateDepartmentQueue(true)
+              setCurrentDepartment(null)
+              setCurrentDepartment(el)
+            }}
+          >
+            {el.name}
+          </button>
+        ))}
       </div>
 
       <main
@@ -363,7 +429,7 @@ export default function Home() {
                 gap: '4px',
               }}
             >
-              {openConversations.map((el, i) => (
+              {myOpenTreatments?.map((treatment, i) => (
                 <p
                   key={i}
                   style={{
@@ -372,17 +438,31 @@ export default function Home() {
                     justifyContent: 'space-between',
                     padding: '12px',
                     borderRadius: '6px',
+                    gap: '9px',
                   }}
                 >
-                  <span>{el.id}</span>
+                  <span style={{ width: '100%' }}>
+                    {treatment.client?.name}
+                  </span>
+
                   <span
                     style={{ cursor: 'pointer' }}
                     onClick={(e) => {
                       e.preventDefault()
-                      closedTreatment(el.id)
+                      closedTreatment(treatment.id)
                     }}
                   >
                     Finalizar
+                  </span>
+
+                  <span
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setCurrentTreatment(treatment)
+                    }}
+                  >
+                    Ver
                   </span>
                 </p>
               ))}
@@ -398,7 +478,7 @@ export default function Home() {
                 gap: '4px',
               }}
             >
-              {conversationsOnHold?.map((el, i) => {
+              {myTreatmentsByDepartment?.map((treatment, i) => {
                 return (
                   <p
                     key={i}
@@ -410,13 +490,13 @@ export default function Home() {
                       borderRadius: '6px',
                     }}
                   >
-                    <span>{el.id}</span>
+                    <span>{treatment.client?.name}</span>
                     <span
                       style={{ cursor: 'pointer' }}
                       onClick={(e) => {
                         e.preventDefault()
-                        setDepartment(`${el.id}`)
-                        requestReceivedService(`${el.id}`)
+                        setCurrentTreatment(treatment)
+                        receivedTreatment(`${treatment.id}`)
                       }}
                     >
                       Atender
@@ -448,7 +528,7 @@ export default function Home() {
               height: '100%',
             }}
           >
-            <h2 style={{ textAlign: 'center' }}>{department}</h2>
+            <h2 style={{ textAlign: 'center' }}>{currentTreatment?.id}</h2>
             <span
               style={{
                 display: 'flex',
@@ -457,13 +537,13 @@ export default function Home() {
                 gap: '4px',
               }}
             >
-              {chat.map((el, i) => {
-                if (el.name !== user?.name) {
+              {myMessages?.map((message, i) => {
+                if (message.sendTo === myUser?.id) {
                   return (
                     <p
                       key={i}
                       style={{
-                        textAlign: 'start',
+                        textAlign: 'end',
                         backgroundColor: '#bff1ff',
                         display: 'flex',
                         flexDirection: 'column',
@@ -473,8 +553,8 @@ export default function Home() {
                         gap: '3px',
                       }}
                     >
-                      <span style={{ fontWeight: 'bold' }}>{el.name}</span>
-                      <span>{el.message}</span>
+                      <span style={{ fontWeight: 'bold' }}>{myUser.name}</span>
+                      <span>{message.text}</span>
                     </p>
                   )
                 }
@@ -482,7 +562,7 @@ export default function Home() {
                   <p
                     key={i}
                     style={{
-                      textAlign: 'end',
+                      textAlign: 'start',
                       backgroundColor: '#bff1ff',
                       display: 'flex',
                       flexDirection: 'column',
@@ -492,8 +572,10 @@ export default function Home() {
                       gap: '3px',
                     }}
                   >
-                    <span style={{ fontWeight: 'bold' }}>{el.name}</span>
-                    <span>{el.message}</span>
+                    <span style={{ fontWeight: 'bold' }}>
+                      {message.sendName}
+                    </span>
+                    <span>{message.text}</span>
                   </p>
                 )
               })}
@@ -514,16 +596,12 @@ export default function Home() {
                   padding: '6px',
                   borderRadius: '6px',
                 }}
-                onChange={(el) => setMessage(el.target.value)}
+                onChange={(el) => setText(el.target.value)}
               />
               <button
                 onClick={(el) => {
                   el.preventDefault()
-                  socket.emit('msgToServer', {
-                    name: user?.name || 'Anônimo',
-                    message: message,
-                    department: department,
-                  })
+                  sendMessage()
                 }}
               >
                 Enviar
