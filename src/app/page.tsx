@@ -1,78 +1,29 @@
 /* eslint-disable react-hooks/rules-of-hooks */
 'use client'
+import { IChat } from '@/interfaces/chat.interface'
+import { IDepartment } from '@/interfaces/department.interface'
+import { IMessage } from '@/interfaces/message.interface'
+import { IUser } from '@/interfaces/user.interface'
 import { useEffect, useState } from 'react'
 import { io } from 'socket.io-client'
 
 const socket = io(`http://localhost:8081`)
 
-interface ITreatment {
-  id: string
-  isOpen: Boolean
-  client: IUser
-  clientId: string
-  attendant: string | null
-  Message: IMessage[]
-  Department: IDepartment
-  departmentId: string
-}
-
-interface IUser {
-  id: string
-  name: string
-  login: string
-  passwordHash: string
-  isAttendant: boolean
-  Department: IDepartment[]
-  Treatment: ITreatment[]
-}
-
-interface IMessage {
-  id?: string
-  text: string
-  sendName: string
-  sendTo: string
-  receivedName?: string
-  receivedTo?: string
-  Treatment?: ITreatment
-  treatmentId: string
-}
-
-interface IDepartment {
-  id: string
-  name: string
-  User: IUser[]
-  Company: ICompany
-  companyId: string
-  Treatment: ITreatment[]
-}
-
-interface ICompany {
-  id: string
-  name: string
-  Department: IDepartment[]
-}
-
 export default function Home() {
   const [myUser, setMyUser] = useState<IUser | null>(null)
-  const [myOpenTreatments, setMyOpenTreatments] = useState<ITreatment[]>([])
+  const [myOpenChats, setMyOpenChats] = useState<IChat[]>([])
   const [myDepartments, setMyDepartments] = useState<IDepartment[]>([])
   const [myMessages, setMyMessages] = useState<IMessage[]>([])
-  const [myTreatmentsByDepartment, setMyTreatmentsByDepartment] = useState<
-    ITreatment[]
-  >([])
+  const [myChatsByDepartment, setMyChatsByDepartment] = useState<IChat[]>([])
 
   const [currentDepartment, setCurrentDepartment] =
     useState<IDepartment | null>(null)
-  const [currentTreatment, setCurrentTreatment] = useState<ITreatment | null>(
-    null
-  )
+  const [currentChat, setCurrentChat] = useState<IChat | null>(null)
 
   const [registerName, setRegisterName] = useState<string | null>(null)
   const [registerLogin, setRegisterLogin] = useState<string | null>(null)
-  const [registerPassword, setRegisterPassword] = useState<string | null>(null)
 
   const [authLogin, setAuthLogin] = useState<string | null>(null)
-  const [authPassword, setAuthPassword] = useState<string | null>(null)
 
   const [text, setText] = useState<string>('')
 
@@ -96,155 +47,143 @@ export default function Home() {
 
   /// SOCKET IO PARA TRANSFERÊNCIA DE DADOS DO ATENDIMENTO
   useEffect(() => {
-    async function find_Treatment_By_Id() {
-      if (currentTreatment) {
-        const res: ITreatment = await fetch(
-          `http://localhost:8080/chat/treatments/${currentTreatment.id}`
+    async function find_chat() {
+      if (currentChat) {
+        const res: IChat = await fetch(
+          `http://localhost:8080/api/chat/${currentChat.id}`
         ).then((el) => el.json())
 
-        setMyMessages(res.Message)
+        setMyMessages(res.Messages)
 
         socket.on(res.id, (message: IMessage) => {
           setMyMessages((prevMessages) => [...prevMessages, message])
         })
 
         return () => {
-          socket.off(currentTreatment.id)
+          socket.off(currentChat.id)
         }
       }
     }
 
-    find_Treatment_By_Id()
-  }, [currentTreatment])
+    find_chat()
+  }, [currentChat])
 
   /// USE EFFECT PARA ATUALIZAR AS FILAS DE CONVERSA
   useEffect(() => {
-    async function find_My_Treatments_In_Department() {
+    async function find_my_chats_in_department() {
       if (updateDepartmentQueue && currentDepartment && myUser) {
-        const myTreatments: ITreatment[] = await fetch(
-          `http://localhost:8080/chat/treatments/department/${currentDepartment.id}/not/${myUser.id}`
+        const myChats: IChat[] = await fetch(
+          `http://localhost:8080/api/chat/department/${currentDepartment.id}/notAttendant/${myUser.id}`
         ).then(async (el) => el.json())
 
-        const myOpenTreatments: ITreatment[] = await fetch(
-          `http://localhost:8080/chat/treatments/department/${currentDepartment.id}/attendant/${myUser.id}`
+        const myOpenChats: IChat[] = await fetch(
+          `http://localhost:8080/api/chat/department/${currentDepartment.id}/attendant/${myUser.id}`
         ).then((el) => el.json())
 
-        setMyOpenTreatments(myOpenTreatments)
-        setMyTreatmentsByDepartment(myTreatments)
+        setMyOpenChats(myOpenChats)
+        setMyChatsByDepartment(myChats)
         setUpdateDepartmentQueue(false)
       }
     }
 
-    find_My_Treatments_In_Department()
+    find_my_chats_in_department()
   }, [updateDepartmentQueue, currentDepartment, myUser])
 
-  async function createUser(): Promise<void> {
-    if (
-      typeof registerLogin === 'string' &&
-      typeof registerName === 'string' &&
-      typeof registerPassword === 'string'
-    ) {
-      const data: IUser = await fetch(`http://localhost:8080/chat/users`, {
+  async function create_user(): Promise<void> {
+    if (typeof registerLogin === 'string' && typeof registerName === 'string') {
+      const data: IUser = await fetch(`http://localhost:8080/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: registerName,
           login: registerLogin,
-          password: registerPassword,
         }),
       }).then((res) => res.json())
 
       setMyUser(data)
       setRegisterLogin(null)
       setRegisterName(null)
-      setRegisterPassword(null)
     }
   }
 
   async function login(): Promise<void> {
-    if (typeof authLogin === 'string' && typeof authPassword === 'string') {
-      const data = await fetch(`http://localhost:8080/chat/auth`, {
+    if (typeof authLogin === 'string') {
+      const data: IUser = await fetch(`http://localhost:8080/api/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ login: authLogin, password: authPassword }),
+        body: JSON.stringify({ login: authLogin }),
       }).then((res) => res.json())
 
       setMyUser(data)
-      setMyDepartments(data.Department)
+      setMyDepartments(data.Departments)
       setAuthLogin(null)
-      setAuthPassword(null)
     }
   }
 
-  async function sendMessage(): Promise<void> {
-    if (myUser && currentTreatment) {
-      const data = await fetch(`http://localhost:8080/chat/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          sendName: myUser.name,
-          sendTo: myUser.id,
-          treatmentId: currentTreatment.id,
-        }),
-      }).then((res) => res.json())
+  async function send_message(): Promise<void> {
+    if (myUser && currentChat) {
+      const data: IMessage = await fetch(
+        `http://localhost:8080/api/message/send`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            sendName: myUser.name,
+            sendId: myUser.id,
+            chatId: currentChat.id,
+          }),
+        }
+      ).then((res) => res.json())
 
       socket.emit('msgToServer', data)
     }
   }
 
-  async function openTreatment(): Promise<void> {
+  async function open_chat(): Promise<void> {
     if (myUser && currentDepartment) {
-      const data: ITreatment = await fetch(
-        `http://localhost:8080/chat/toMeet`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clientId: myUser.id,
-            departmentId: currentDepartment.id,
-          }),
-        }
-      ).then((res) => res.json())
+      const data: IChat = await fetch(`http://localhost:8080/api/chat/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: myUser.id,
+          departmentId: currentDepartment.id,
+        }),
+      }).then((res) => res.json())
 
-      setCurrentTreatment(data)
-      setMyOpenTreatments([...myOpenTreatments, data])
+      setCurrentChat(data)
+      setMyOpenChats([...myOpenChats, data])
       socket.emit('msgToServer', { departmentId: currentDepartment.id })
     }
   }
 
-  async function receivedTreatment(treatmentId: string): Promise<void> {
+  async function answer_chat(chatId: string): Promise<void> {
     if (myUser) {
-      const data: ITreatment = await fetch(
-        `http://localhost:8080/chat/toMeetReceived`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ treatmentId, attendantId: myUser.id }),
-        }
-      ).then((res) => res.json())
+      const data: IChat = await fetch(`http://localhost:8080/api/chat/answer`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId, attendantId: myUser.id }),
+      }).then((res) => res.json())
 
-      setCurrentTreatment(data)
-      setMyMessages(data.Message)
-      setMyOpenTreatments([...myOpenTreatments, data])
+      setCurrentChat(data)
+      setMyMessages(data.Messages)
+      setMyOpenChats([...myOpenChats, data])
       setUpdateDepartmentQueue(true)
       socket.emit('msgToServer', { departmentId: data.departmentId })
     }
   }
 
-  async function closedTreatment(treatmentId: string): Promise<void> {
-    const data: ITreatment = await fetch(`http://localhost:8080/chat/closed`, {
+  async function close_chat(chatId: string): Promise<void> {
+    const data: IChat = await fetch(`http://localhost:8080/api/chat/close`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ treatmentId }),
+      body: JSON.stringify({ chatId }),
     }).then((res) => res.json())
 
-    const removeTreatment = myOpenTreatments.filter(
-      (treatment) => treatment.id !== treatmentId
-    )
+    const removeChat = myOpenChats.filter((chat) => chat.id !== chatId)
 
     setUpdateDepartmentQueue(true)
-    setMyOpenTreatments(removeTreatment)
+    setMyOpenChats(removeChat)
     socket.emit('msgToServer', { departmentId: data.departmentId })
   }
 
@@ -305,16 +244,10 @@ export default function Home() {
                 value={registerLogin || ''}
                 onChange={(el) => setRegisterLogin(el.target.value)}
               />
-              <input
-                type="text"
-                placeholder="password"
-                value={registerPassword || ''}
-                onChange={(el) => setRegisterPassword(el.target.value)}
-              />
               <button
                 onClick={(e) => {
                   e.preventDefault()
-                  createUser()
+                  create_user()
                 }}
               >
                 Create
@@ -347,12 +280,6 @@ export default function Home() {
                 value={authLogin || ''}
                 onChange={(el) => setAuthLogin(el.target.value)}
               />
-              <input
-                type="text"
-                placeholder="password"
-                value={authPassword || ''}
-                onChange={(el) => setAuthPassword(el.target.value)}
-              />
               <button
                 onClick={(el) => {
                   el.preventDefault()
@@ -377,7 +304,7 @@ export default function Home() {
         <button
           onClick={(el) => {
             el.preventDefault()
-            openTreatment()
+            open_chat()
           }}
         >
           Solicitar atendimento
@@ -429,7 +356,7 @@ export default function Home() {
                 gap: '4px',
               }}
             >
-              {myOpenTreatments?.map((treatment, i) => (
+              {myOpenChats?.map((chat, i) => (
                 <p
                   key={i}
                   style={{
@@ -442,14 +369,14 @@ export default function Home() {
                   }}
                 >
                   <span style={{ width: '100%' }}>
-                    {treatment.client?.name}
+                    {chat.Client?.name}
                   </span>
 
                   <span
                     style={{ cursor: 'pointer' }}
                     onClick={(e) => {
                       e.preventDefault()
-                      closedTreatment(treatment.id)
+                      close_chat(chat.id)
                     }}
                   >
                     Finalizar
@@ -459,7 +386,7 @@ export default function Home() {
                     style={{ cursor: 'pointer' }}
                     onClick={(e) => {
                       e.preventDefault()
-                      setCurrentTreatment(treatment)
+                      setCurrentChat(chat)
                     }}
                   >
                     Ver
@@ -478,7 +405,7 @@ export default function Home() {
                 gap: '4px',
               }}
             >
-              {myTreatmentsByDepartment?.map((treatment, i) => {
+              {myChatsByDepartment?.map((treatment, i) => {
                 return (
                   <p
                     key={i}
@@ -490,13 +417,13 @@ export default function Home() {
                       borderRadius: '6px',
                     }}
                   >
-                    <span>{treatment.client?.name}</span>
+                    <span>{treatment.Client?.name}</span>
                     <span
                       style={{ cursor: 'pointer' }}
                       onClick={(e) => {
                         e.preventDefault()
-                        setCurrentTreatment(treatment)
-                        receivedTreatment(`${treatment.id}`)
+                        setCurrentChat(treatment)
+                        answer_chat(`${treatment.id}`)
                       }}
                     >
                       Atender
@@ -528,7 +455,7 @@ export default function Home() {
               height: '100%',
             }}
           >
-            <h2 style={{ textAlign: 'center' }}>{currentTreatment?.id}</h2>
+            <h2 style={{ textAlign: 'center' }}>{currentChat?.id}</h2>
             <span
               style={{
                 display: 'flex',
@@ -542,7 +469,7 @@ export default function Home() {
                   return self.indexOf(message) === index
                 })
                 .map((message, i) => {
-                  if (message.sendTo === myUser?.id) {
+                  if (message.sendId === myUser?.id) {
                     return (
                       <p
                         key={i}
@@ -607,7 +534,7 @@ export default function Home() {
               <button
                 onClick={(el) => {
                   el.preventDefault()
-                  sendMessage()
+                  send_message()
                 }}
               >
                 Enviar
