@@ -15,7 +15,7 @@ export default function Home() {
   const [myDepartments, setMyDepartments] = useState<IDepartment[]>([])
   const [myMessages, setMyMessages] = useState<IMessage[]>([])
   const [myChatsByDepartment, setMyChatsByDepartment] = useState<IChat[]>([])
-
+console.log(socket)
   const [currentDepartment, setCurrentDepartment] =
     useState<IDepartment | null>(null)
   const [currentChat, setCurrentChat] = useState<IChat | null>(null)
